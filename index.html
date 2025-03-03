@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>시계 읽기 (디지털)</title>
+  <style>
+    body {
+      text-align: center;
+      font-family: 'Arial', sans-serif;
+      background-color: #f0f8ff;
+      margin: 0;
+      padding: 0;
+    }
+    #gameTitle {
+      font-size: 4em;
+      margin-top: 20px;
+      padding: 10px;
+      background-color: #76c7c0;
+      color: white;
+    }
+    #scoreBoard {
+      font-size: 2.4em;
+      margin: 10px;
+    }
+    #energyBarContainer {
+      width: 80%;
+      height: 30px;
+      background-color: #ddd;
+      margin: 20px auto;
+      border-radius: 15px;
+      overflow: hidden;
+    }
+    #energyBar {
+      width: 100%;
+      height: 100%;
+      background-color: #76c7c0;
+      transition: width 0.1s linear;
+    }
+    #timeDisplay {
+      font-size: 6em;
+      margin: 50px;
+    }
+    #buttonsContainer {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      max-width: 600px;
+      margin: 0 auto;
+    }
+    .answerButton {
+      font-size: 2em;
+      width: 200px;
+      height: 80px;
+      margin: 10px;
+      cursor: pointer;
+      background-color: #fff;
+      border: 2px solid #76c7c0;
+      border-radius: 10px;
+      transition: background-color 0.2s;
+    }
+    .answerButton:hover {
+      background-color: #e0f7fa;
+    }
+    #resultMessage {
+      font-size: 3em;
+      margin: 20px;
+      height: 30px;
+    }
+    #finalScore {
+      font-size: 4em;
+      margin: 50px;
+      color: #d32f2f;
+    }
+    #startButton, #nextButton, #sendButton {
+      font-size: 2em;
+      padding: 20px 40px;
+      margin-top: 20px;
+      cursor: pointer;
+      background-color: #76c7c0;
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+    }
+    #startButton:hover, #nextButton:hover, #sendButton:hover {
+      background-color: #64b5f6;
+    }
+    #playerInput input {
+      font-size: 2em;
+      padding: 10px;
+    }
+    #watermark {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 5em;
+      color: rgba(0, 0, 0, 0.1);
+      user-select: none;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="gameTitle">시계 읽기 (디지털)</div>
+  <div id="scoreBoard">점수: <span id="score">0</span> | 틀린 횟수: <span id="mistakes">0</span>/3</div>
+  <div id="energyBarContainer">
+    <div id="energyBar"></div>
+  </div>
+  <div id="timeDisplay"></div>
+  <div id="buttonsContainer"></div>
+  <div id="resultMessage"></div>
+  <div id="finalScore"></div>
+
+  <!-- 플레이어 이름 입력 -->
+  <div id="playerInput" style="margin:20px;">
+    <input type="text" id="playerName" placeholder="이름을 입력하세요">
+  </div>
+
+  <!-- 게임 시작 버튼 -->
+  <button id="startButton">게임 시작하기</button>
+
+  <!-- 다음 문제 버튼 (정답 또는 오답 후에만 표시) -->
+  <button id="nextButton" style="display:none;">다음 문제</button>
+  
+  <!-- 서버 데이터 전송 영역 -->
+  <div id="sendDataSection" style="display:none; margin-top:20px;">
+    <div id="finalInfo" style="font-size:2em;"></div>
+    <button id="sendButton">전송하기</button>
+    <div id="response" style="font-size:1.5em; margin-top:10px;"></div>
+  </div>
+
+  <!-- 워터마크 -->
+  <div id="watermark">휘매쓰</div>
+
+  <script>
+    const totalMistakesAllowed = 3;
+    let score = 0;
+    let mistakes = 0;
+    let stage = 1;
+    let timeLimit = 11250; // 제한 시간 (11.25초)
+    let energyBarInterval;
+    let timeRemaining;
+    let correctTime = '';
+    let timer;
+    let startTime; // 게임 시작 시각 저장
+
+    const scoreElement = document.getElementById('score');
+    const mistakesElement = document.getElementById('mistakes');
+    const resultMessage = document.getElementById('resultMessage');
+    const finalScore = document.getElementById('finalScore');
+    const startButton = document.getElementById('startButton');
+    const energyBar = document.getElementById('energyBar');
+    const buttonsContainer = document.getElementById('buttonsContainer');
+    const timeDisplay = document.getElementById('timeDisplay');
+    const nextButton = document.getElementById('nextButton');
+    const sendDataSection = document.getElementById('sendDataSection');
+    const finalInfo = document.getElementById('finalInfo');
+    const sendButton = document.getElementById('sendButton');
+
+    startButton.addEventListener('click', startGame);
+    nextButton.addEventListener('click', () => {
+      nextButton.style.display = 'none';
+      resultMessage.textContent = '';
+      nextStage();
+    });
+    sendButton.addEventListener('click', () => {
+      const playerName = document.getElementById('playerName').value.trim();
+      const elapsedTime = Math.floor((Date.now() - startTime) / 1000);
+      saveData("시계 읽기 (디지털)", playerName, score, elapsedTime);
+    });
+
+    function startGame() {
+      const playerName = document.getElementById('playerName').value.trim();
+      if (!playerName) {
+        alert("이름을 입력하세요.");
+        return;
+      }
+      // 시작하면 이름 입력창은 숨김
+      document.getElementById('playerInput').style.display = 'none';
+      score = 0;
+      mistakes = 0;
+      stage = 1;
+      timeLimit = 11250;
+      finalScore.textContent = '';
+      resultMessage.textContent = '';
+      sendDataSection.style.display = 'none';
+      updateScoreBoard();
+      startButton.style.display = 'none';
+      startTime = Date.now(); // 게임 시작 시간 기록
+      nextStage();
+    }
+
+    function nextStage() {
+      clearTimeout(timer);
+      clearInterval(energyBarInterval);
+      timeRemaining = timeLimit;
+      updateEnergyBar();
+      generateTime();
+      generateButtons();
+      startTimer();
+    }
+
+    function generateTime() {
+      const hour = Math.floor(Math.random() * 12) + 1;
+      const minute = Math.floor(Math.random() * 60);
+      correctTime = timeToKorean(hour, minute);
+
+      const hourDisplay = hour < 10 ? `0${hour}` : hour;
+      const minuteDisplay = minute < 10 ? `0${minute}` : minute;
+      timeDisplay.textContent = `${hourDisplay}:${minuteDisplay}`;
+    }
+
+    // 시간과 분을 한글로 변환하는 함수
+    function timeToKorean(hour, minute) {
+      const hourInKorean = ["열두", "한", "두", "세", "네", "다섯", "여섯", "일곱", "여덟", "아홉", "열", "열한"][hour % 12];
+      const minuteInKorean = convertMinuteToKorean(minute);
+      return `${hourInKorean} 시 ${minuteInKorean}`;
+    }
+
+    // 분을 한글로 변환하는 함수
+    function convertMinuteToKorean(minute) {
+      const minuteNumbers = ["", "일", "이", "삼", "사", "오", "육", "칠", "팔", "구"];
+      if (minute === 0) return "정각";
+      if (minute < 10) return `${minuteNumbers[minute]} 분`;
+      const tens = Math.floor(minute / 10);
+      const ones = minute % 10;
+      const tensInKorean = ["", "십", "이십", "삼십", "사십", "오십"][tens];
+      const onesInKorean = minuteNumbers[ones];
+      return ones === 0 ? `${tensInKorean} 분` : `${tensInKorean}${onesInKorean} 분`;
+    }
+
+    function generateButtons() {
+      buttonsContainer.innerHTML = '';
+      const correctAnswer = correctTime;
+      let answers = [correctAnswer];
+
+      // 랜덤한 오답 생성
+      while (answers.length < 3) {
+        const randomHour = Math.floor(Math.random() * 12) + 1;
+        const randomMinute = Math.floor(Math.random() * 60);
+        const wrongAnswer = timeToKorean(randomHour, randomMinute);
+        if (!answers.includes(wrongAnswer)) {
+          answers.push(wrongAnswer);
+        }
+      }
+
+      // 배열 섞기
+      answers.sort(() => Math.random() - 0.5);
+
+      answers.forEach(time => {
+        const btn = document.createElement('button');
+        btn.classList.add('answerButton');
+        btn.textContent = time;
+        btn.addEventListener('click', () => checkAnswer(time));
+        buttonsContainer.appendChild(btn);
+      });
+    }
+
+    function checkAnswer(selectedTime) {
+      // 모든 답안 버튼 비활성화
+      Array.from(buttonsContainer.children).forEach(button => {
+        button.disabled = true;
+      });
+      clearTimeout(timer);
+      clearInterval(energyBarInterval);
+      if (selectedTime === correctTime) {
+        score += 10;
+        resultMessage.style.color = 'green';
+        resultMessage.textContent = '잘했어요!';
+      } else {
+        mistakes++;
+        resultMessage.style.color = 'red';
+        resultMessage.textContent = '다시 시도해보세요!';
+      }
+      updateScoreBoard();
+      if (mistakes >= totalMistakesAllowed) {
+        endGame();
+      } else {
+        // 답변 후 "다음 문제" 버튼 표시
+        nextButton.style.display = 'inline-block';
+      }
+    }
+
+    function startTimer() {
+      timer = setTimeout(() => {
+        Array.from(buttonsContainer.children).forEach(button => {
+          button.disabled = true;
+        });
+        mistakes++;
+        resultMessage.style.color = 'red';
+        resultMessage.textContent = '시간이 초과되었어요!';
+        updateScoreBoard();
+        if (mistakes >= totalMistakesAllowed) {
+          endGame();
+        } else {
+          nextButton.style.display = 'inline-block';
+        }
+      }, timeLimit);
+
+      // 에너지 바 감소
+      energyBarInterval = setInterval(() => {
+        timeRemaining -= 50;
+        updateEnergyBar();
+        if (timeRemaining <= 0) {
+          clearInterval(energyBarInterval);
+        }
+      }, 50);
+    }
+
+    function updateEnergyBar() {
+      const width = (timeRemaining / timeLimit) * 100;
+      energyBar.style.width = width + '%';
+      if (width <= 0) {
+        energyBar.style.width = '0%';
+      }
+    }
+
+    function updateScoreBoard() {
+      scoreElement.textContent = score;
+      mistakesElement.textContent = mistakes;
+    }
+
+    function endGame() {
+      clearTimeout(timer);
+      clearInterval(energyBarInterval);
+      buttonsContainer.innerHTML = '';
+      resultMessage.textContent = '';
+      finalScore.textContent = `게임 종료! 최종 점수: ${score}점`;
+      const elapsedTime = Math.floor((Date.now() - startTime) / 1000);
+      finalInfo.innerText = `경과시간: ${elapsedTime}초, 점수: ${score}점`;
+      nextButton.style.display = 'none';
+      startButton.style.display = 'none';
+      sendDataSection.style.display = 'block';
+    }
+
+    // 서버 데이터 전송 함수 (비동기 처리)
+    async function saveData(game, name, score, elapsedTime) {
+      const FUNCTION_URL = "https://us-central1-record-f420d.cloudfunctions.net/report";
+
+      const requestData = {
+          game,
+          name,
+          score: parseInt(score, 10),
+          elapsedTime: parseInt(elapsedTime, 10)
+      };
+
+      try {
+          const response = await fetch(FUNCTION_URL, {
+              method: 'POST',
+              headers: {
+                  'Content-Type': 'application/json'
+              },
+              body: JSON.stringify(requestData)
+          });
+
+          const responseData = await response.json();
+
+          if (response.ok) {
+              document.getElementById('response').innerText = `성공: ${JSON.stringify(responseData, null, 2)}`;
+          } else {
+              document.getElementById('response').innerText = `오류: ${JSON.stringify(responseData, null, 2)}`;
+          }
+      } catch (error) {
+          console.error('요청 실패:', error);
+          document.getElementById('response').innerText = `네트워크 오류: ${error.message}`;
+      }
+    }
+  </script>
+</body>
+</html>
